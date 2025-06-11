@@ -122,7 +122,7 @@ with tab2:
     with st.expander("📋 Klik untuk lihat perangkat yang digunakan di event ini"):
         detail_cols = [
             'Type', 'Brand', 'Model', 'Specification', 'Serial Number',
-            'Status Device', 'Status Event', 'Event End Date', 'PIC'
+            'Status Device', 'Status Event', 'Event End Date'
         ]
         st.dataframe(event_detail_df[detail_cols], use_container_width=True)
 
