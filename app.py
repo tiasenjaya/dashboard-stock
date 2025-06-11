@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -87,14 +86,14 @@ with tab1:
 # ---------------------- TAB 2: EVENT ----------------------
 with tab2:
     st.header("📅 Daftar Event")
-    df_event = df_used[df_used['Status Device'] == 'in use'].copy()
+    df_event_all = df_used[df_used['Status Device'] == 'in use'].copy()
     st.markdown("### 📋 Daftar Event yang Sedang Berlangsung")
 
     # Filter hanya event aktif
-    active_event_df = df_event[df_event['Status Event'].str.lower() == "on going"].copy()
+    df_event_active = df_event_all[df_event_all['Status Event'].str.lower() == "on going"].copy()
 
     # Hitung jumlah perangkat per event
-    event_summary = active_event_df.groupby(['Event', 'PIC'])['Serial Number'].count().reset_index()
+    event_summary = df_event_active.groupby(['Event', 'PIC'])['Serial Number'].count().reset_index()
     event_summary.rename(columns={'Serial Number': 'Jumlah Perangkat'}, inplace=True)
 
     # Hitung total perangkat & jumlah event
@@ -117,7 +116,7 @@ with tab2:
     )
 
     # Filter data perangkat berdasarkan event terpilih
-    event_detail_df = active_event_df[active_event_df["Event"] == selected_event_detail]
+    event_detail_df = df_event_active[df_event_active["Event"] == selected_event_detail]
 
     with st.expander("📋 Klik untuk lihat perangkat yang digunakan di event ini"):
         detail_cols = [
@@ -125,21 +124,26 @@ with tab2:
             'Status Device', 'Status Event', 'Event End Date', 'PIC'
         ]
         st.dataframe(event_detail_df[detail_cols], use_container_width=True)
-
+        
+    df_event_all = df_used.copy()
 
     # Filter event & tanggal
     with st.container():
         st.subheader("🔍 Filter Event")
-        selected_pic = st.selectbox("Pilih PIC", ["All"] + sorted(df_used['PIC'].dropna().unique()), key="pic_filter")  
+
+        all_pic_options = ["All"] + sorted(df_event_all['PIC'].dropna().unique())
+        selected_pic = st.selectbox("Pilih PIC", all_pic_options, key="pic_filter")
 
     # Konversi tanggal kolom ke datetime dulu (penting!)
-    df_event['Event End Date'] = pd.to_datetime(df_event['Event End Date'], errors='coerce')
+    df_event_all['Event End Date'] = pd.to_datetime(df_event_all['Event End Date'], errors='coerce')
 
     if selected_pic != "All":
-        df_event = df_event[df_event['PIC'] == selected_pic]
+        df_event_filtered = df_event_all[df_event_all['PIC'] == selected_pic]
+    else:
+        df_event_filtered = df_event_all
 
     event_cols = [
         'Type', 'Brand', 'Model', 'Specification', 'Serial Number',
         'Status Device', 'Status Event', 'Event', 'Event End Date', 'PIC'
     ]
-    st.dataframe(df_event[event_cols], use_container_width=True)
+    st.dataframe(df_event_filtered[event_cols], use_container_width=True)
