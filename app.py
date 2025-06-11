@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -79,8 +80,8 @@ with tab1:
                 )
 
         # Tabel stok ready (tanpa cek tanggal)
-        st.subheader("✅ Perangkat Ready Saat Ini")
-        st.dataframe(df_ready, use_container_width=True)
+        with st.expander("✅ List ALL Device Ready Stock"):
+            st.dataframe(df_ready, use_container_width=True)
 
 
 # ---------------------- TAB 2: EVENT ----------------------
@@ -124,7 +125,7 @@ with tab2:
             'Status Device', 'Status Event', 'Event End Date', 'PIC'
         ]
         st.dataframe(event_detail_df[detail_cols], use_container_width=True)
-        
+
     df_event_all = df_used.copy()
 
     # Filter event & tanggal
