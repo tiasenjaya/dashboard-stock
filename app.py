@@ -90,47 +90,92 @@ with tab1:
 with tab2:
     st.header("📦 Status Stok Device")
 
-    # Pilih tanggal pengecekan stok
-    selected_date = st.date_input("Pilih Tanggal Cek Stok")
+    # --- Filter Tanggal dan Event Status ---
+    selected_date = st.date_input("Pilih Tanggal Cek Stok", value=pd.to_datetime("today"))
+    status_options = ["All", "Temporary", "Permanent"]
+    selected_event_status = st.selectbox("Filter Event Status", status_options)
 
-    # Hitung total device READY dari All Device
-    df_ready = df_stock[df_stock["Status Device"] == "Ready"]
-    total_per_type = df_ready["Type"].value_counts()
+    # --- Normalisasi & Persiapan Data ---
+    df_event["Status"] = df_event["Status"].fillna("").str.lower().str.strip()
+    df_event["Event Status"] = df_event["Event Status"].fillna("").str.lower().str.strip()
+    df_stock["Status Device"] = df_stock["Status Device"].fillna("").str.lower().str.strip()
 
+    # --- Filter Event Berdasarkan Tanggal & Status ---
     df_event["Event Start Date"] = pd.to_datetime(df_event["Event Start Date"])
     df_event["Event End Date"] = pd.to_datetime(df_event["Event End Date"])
 
-    # Hitung device yang sedang digunakan berdasarkan List Event
     df_event_filtered = df_event[
         (df_event["Event Start Date"] <= pd.to_datetime(selected_date)) &
         (df_event["Event End Date"] >= pd.to_datetime(selected_date))
     ]
 
-    in_use = {
-        "Tablet": df_event_filtered["Numbers of Tablet"].fillna(0).sum(),
-        "Printer": df_event_filtered["Numbers of Printer"].fillna(0).sum(),
-        "Mobile POS (MPOS)": df_event_filtered["Numbers of Mobile POS (MPOS)"].fillna(0).sum()
-    }
+    if selected_event_status != "All":
+        df_event_filtered = df_event_filtered[
+            df_event_filtered["Event Status"] == selected_event_status.lower()
+        ]
 
+    # Kumpulan Status
+    status_in_use = ["in use", "lost asset", "on progress of handover"]
+    status_pending = ["on prepare", "reject", "", "waiting"]
+    status_returned = ["returned"]
+
+    # Hitung real per status dari sheet Event
+    df_in_use = df_event_filtered[df_event_filtered["Status"].isin(status_in_use)]
+    df_pending = df_event_filtered[df_event_filtered["Status"].isin(status_pending)]
+    df_returned = df_event_filtered[df_event_filtered["Status"].isin(status_returned)]
+
+    # Rekap tiap jenis
+    used_summary = df_in_use[["Numbers of Tablet", "Numbers of Printer", "Numbers of Mobile POS (MPOS)"]].fillna(0).sum()
+    pending_summary = df_pending[["Numbers of Tablet", "Numbers of Printer", "Numbers of Mobile POS (MPOS)"]].fillna(0).sum()
+    returned_summary = df_returned[["Numbers of Tablet", "Numbers of Printer", "Numbers of Mobile POS (MPOS)"]].fillna(0).sum()
+
+    # Semua stok dari All Device
+    total_summary = df_stock.groupby("Type").size().to_dict()
+    available_summary = df_stock[df_stock["Status Device"] == "available"].groupby("Type").size().to_dict()
+
+    # Hitung Stok Ready dari Available + Returned - In Use
     stock_ready = {
-        tipe: total_per_type.get(tipe, 0) - in_use.get(tipe, 0)
-        for tipe in ["Tablet", "Printer", "Mobile POS (MPOS)"]
+        "Tablet": available_summary.get("Tablet", 0),
+        "Printer": available_summary.get("Printer Bluetooth", 0),
+        "Mobile POS": available_summary.get("Mobile POS", 0)
     }
 
-    # Tampilkan ringkasan stok berdasarkan hasil hitung
+    in_use = {
+        "Tablet": used_summary.get("Numbers of Tablet", 0),
+        "Printer": used_summary.get("Numbers of Printer", 0),
+        "Mobile POS": used_summary.get("Numbers of Mobile POS (MPOS)", 0)
+    }
+
+    to_confirm = {
+        "Tablet": pending_summary.get("Numbers of Tablet", 0),
+        "Printer": pending_summary.get("Numbers of Printer", 0),
+        "Mobile POS": pending_summary.get("Numbers of Mobile POS (MPOS)", 0)
+    }
+
+    stock_real = {
+        "Tablet": stock_ready["Tablet"] - in_use["Tablet"],
+        "Printer": stock_ready["Printer"] - in_use["Printer"],
+        "Mobile POS": stock_ready["Mobile POS"] - in_use["Mobile POS"]
+    }
+
+    # --- Tampilkan Metrik ---
     col1, col2, col3 = st.columns(3)
-    col1.metric("Tablet Ready", stock_ready["Tablet"], delta=f"-{in_use['Tablet']} in use")
-    col2.metric("Printer Ready", stock_ready["Printer"], delta=f"-{in_use['Printer']} in use")
-    col3.metric("MPOS Ready", stock_ready["Mobile POS (MPOS)"], delta=f"-{in_use['Mobile POS (MPOS)']} in use")
+    col1.metric("Tablet Ready", stock_real["Tablet"], delta=f"-{in_use['Tablet']} in use")
+    col2.metric("Printer Ready", stock_real["Printer"], delta=f"-{in_use['Printer']} in use")
+    col3.metric("MPOS Ready", stock_real["Mobile POS"], delta=f"-{in_use['Mobile POS']} in use")
 
-    st.markdown("---")
+    summary_data = pd.DataFrame({
+    "Type": ["Mobile POS", "Printer Bluetooth", "Tablet"],
+    "Total Device": [total_summary.get("Mobile POS", 0), total_summary.get("Printer Bluetooth", 0), total_summary.get("Tablet", 0)],
+    "Available": [stock_ready["Mobile POS"], stock_ready["Printer"], stock_ready["Tablet"]],
+    "In Use": [in_use["Mobile POS"], in_use["Printer"], in_use["Tablet"]],
+    "To Be Confirm": [to_confirm["Mobile POS"], to_confirm["Printer"], to_confirm["Tablet"]]
+    })
 
-    # Tabel rekap jumlah total device dari df_stock
     st.subheader("📊 Ringkasan Jumlah Device")
-    summary = df_stock.groupby(["Type", "Status Device"]).size().unstack(fill_value=0)
-    st.dataframe(summary, use_container_width=True)
+    st.dataframe(summary_data, use_container_width=True)
 
-    # Filter berdasarkan tipe device
+    # --- Filter Tipe Device ---
     tipe_list = ["All"] + sorted(df_stock["Type"].dropna().unique())
     selected_type = st.selectbox("Filter berdasarkan Tipe Device", tipe_list)
 
@@ -138,16 +183,6 @@ with tab2:
     if selected_type != "All":
         df_device_filtered = df_device_filtered[df_device_filtered["Type"] == selected_type]
 
-    # Pewarnaan status device
-    def highlight_device_status(row):
-        status = str(row["Status Device"]).lower()
-        if "ready" in status:
-            return ['background-color: #d4edda'] * len(row)
-        elif "in use" in status:
-            return ['background-color: #fff3cd'] * len(row)
-        elif "broken" in status or "maintenance" in status:
-            return ['background-color: #f8d7da'] * len(row)
-        return [''] * len(row)
-
+    # --- Tampilkan Daftar Device ---
     st.subheader("📋 Daftar Device")
-    st.dataframe(df_device_filtered.style.apply(highlight_device_status, axis=1), use_container_width=True)
+    st.dataframe(df_device_filtered.reset_index(drop=True), use_container_width=True)
