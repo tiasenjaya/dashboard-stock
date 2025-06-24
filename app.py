@@ -103,19 +103,31 @@ def render_tab2_status_stok(df_event, df_stock):
     # Gabungkan total + pivot status
     summary_data = pd.concat([total_summary, status_pivot], axis=1).fillna(0).astype(int).reset_index()
 
-    # Hitung metrik ready berdasarkan "available"
+    # Hitung metrik ready dan in use
     available_summary = status_pivot.get("available", {})
+    in_use_summary = status_pivot.get("in use", {})
+
+    # Per tipe
     tablet_ready = available_summary.get("Tablet", 0)
+    tablet_in_use = in_use_summary.get("Tablet", 0)
+    tablet_sisa = tablet_ready - tablet_in_use
+
     printer_ready = available_summary.get("Printer Bluetooth", 0)
+    printer_in_use = in_use_summary.get("Printer Bluetooth", 0)
+    printer_sisa = printer_ready - printer_in_use
+
     mpos_ready = available_summary.get("Mobile POS", 0)
+    mpos_in_use = in_use_summary.get("Mobile POS", 0)
+    mpos_sisa = mpos_ready - mpos_in_use
+
     total_devices = total_summary.sum()
 
     # Metrik
     col0, col1, col2, col3 = st.columns(4)
     col0.metric("Total Device", total_devices)
-    col1.metric("Tablet Ready", tablet_ready)
-    col2.metric("Printer Ready", printer_ready)
-    col3.metric("MPOS Ready", mpos_ready)
+    col1.metric("Tablet Ready", tablet_sisa, f"-{tablet_in_use} in use", delta_color="inverse")
+    col2.metric("Printer Ready", printer_sisa, f"-{printer_in_use} in use", delta_color="inverse")
+    col3.metric("MPOS Ready", mpos_sisa, f"-{mpos_in_use} in use", delta_color="inverse")
 
     # Tampilkan tabel ringkasan
     st.subheader("📊 Ringkasan Jumlah Device")
