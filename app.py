@@ -83,11 +83,21 @@ def render_tab2_status_stok(df_event, df_stock):
     st.header("📦 Status Stok Device")
 
     selected_date = st.date_input("Pilih Tanggal Cek Stok", value=pd.to_datetime("today"))
+    status_mode = st.radio(
+    "Pilih Mode Device",
+    ["Device Temporary", "Device Permanent"],
+    horizontal=True
+    )
 
     # Bersihkan data stok
     df_stock = df_stock[df_stock["Type"].notna()]
     df_stock["Status Device"] = df_stock["Status Device"].astype(str).str.lower().str.strip()
     df_stock["Type"] = df_stock["Type"].astype(str).str.strip()
+
+    if status_mode == "Device Temporary":
+        df_stock = df_stock[~df_stock["Status Device"].str.contains("used permanently")]
+    else:
+        df_stock = df_stock[df_stock["Status Device"].str.contains("used permanently")]
 
     # Hitung total perangkat
     total_summary = df_stock.groupby("Type").size().rename("Total Device")
@@ -104,18 +114,27 @@ def render_tab2_status_stok(df_event, df_stock):
     summary_data = pd.concat([total_summary, status_pivot], axis=1).fillna(0).astype(int).reset_index()
 
     # Hitung metrik ready dan in use
-    available_summary = status_pivot.get("available", {})
-    in_use_summary = status_pivot.get("in use", {})
+    if status_mode == "Device Permanent":
+        permanent_summary = status_pivot.get("used permanently", {})
+        tablet_ready = permanent_summary.get("Tablet", 0)
+        printer_ready = permanent_summary.get("Printer Bluetooth", 0)
+        mpos_ready = permanent_summary.get("Mobile POS", 0)
+        
+        # Tetap definisikan variabel *_in_use agar tidak error
+        tablet_in_use = 0
+        printer_in_use = 0
+        mpos_in_use = 0
+    else:
+        available_summary = status_pivot.get("available", {})
+        in_use_summary = status_pivot.get("in use", {})
 
-    # Per tipe
-    tablet_ready = available_summary.get("Tablet", 0)
-    tablet_in_use = in_use_summary.get("Tablet", 0)
+        tablet_ready = available_summary.get("Tablet", 0)
+        printer_ready = available_summary.get("Printer Bluetooth", 0)
+        mpos_ready = available_summary.get("Mobile POS", 0)
 
-    printer_ready = available_summary.get("Printer Bluetooth", 0)
-    printer_in_use = in_use_summary.get("Printer Bluetooth", 0)
-
-    mpos_ready = available_summary.get("Mobile POS", 0)
-    mpos_in_use = in_use_summary.get("Mobile POS", 0)
+        tablet_in_use = in_use_summary.get("Tablet", 0)
+        printer_in_use = in_use_summary.get("Printer Bluetooth", 0)
+        mpos_in_use = in_use_summary.get("Mobile POS", 0)
 
     total_devices = total_summary.sum()
 
