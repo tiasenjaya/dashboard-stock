@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 from urllib.parse import quote
@@ -82,7 +81,6 @@ def render_tab1_monitoring_event(df_event):
 def render_tab2_status_stok(df_event, df_stock):
     st.header("📦 Status Stok Device")
 
-    selected_date = st.date_input("Pilih Tanggal Cek Stok", value=pd.to_datetime("today"))
     status_mode = st.radio(
     "Pilih Mode Device",
     ["Device Temporary", "Device Permanent"],
