@@ -38,44 +38,78 @@ def preprocess_data(df_event, df_stock):
 
 # === 3. RENDER TAB 1 ===
 def render_tab1_monitoring_event(df_event):
-    st.header("📋 Monitoring Pengajuan Event")
+    st.header("📅 Monitoring Pengajuan Event")
 
-    pic_list = sorted(df_event["Email Address"].dropna().unique())
-    selected_pic = st.selectbox("Pilih Nama PIC (Sales)", pic_list)
-    user_data = df_event[df_event["Email Address"] == selected_pic]
+    # Mode tampilan: Semua event atau berdasarkan PIC
+    tampilkan_mode = st.radio("Tampilkan Event berdasarkan:", ["Semua Event", "Filter by PIC"], horizontal=True)
 
-    if user_data.empty:
-        st.info("Belum ada pengajuan untuk PIC ini.")
+    # Pastikan kolom tanggal dalam format datetime
+    df_event["Event End Date"] = pd.to_datetime(df_event["Event End Date"], errors='coerce')
+    df_event["Event Start Date"] = pd.to_datetime(df_event["Event Start Date"], errors='coerce')
+
+    if tampilkan_mode == "Semua Event":
+        # Filter status event
+        status_list = df_event["Status"].dropna().unique().tolist()
+        status_filter = st.selectbox("Filter berdasarkan Status Event", ["Semua"] + status_list)
+
+        if status_filter != "Semua":
+            df_event = df_event[df_event["Status"] == status_filter]
+
+        df_event = df_event.sort_values("Event Start Date", ascending=False)
+        st.markdown("### 📋 Daftar Semua Event (Ringkas)")
+
+        cols = st.columns(3)
+
+        for i, (_, row) in enumerate(df_event.iterrows()):
+            col = cols[i % 3]
+            with col:
+                st.markdown(
+                    f"""
+                    <div style="border:1px solid #ccc; border-radius:10px; padding:15px; margin-bottom:10px; background-color:#f9f9f9;">
+                        <b>📧 PIC:</b> {row['Email Address']}<br>
+                        <b>🎪 Event:</b> {row['Event Name']}<br>
+                        <b>📍 Lokasi:</b> {row['Event Location']}<br>
+                        <b>🗓️ Start Event:</b> {row['Event Start Date'].strftime('%Y-%m-%d') if pd.notnull(row['Event End Date']) else '_'}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
     else:
-        user_data = user_data.reset_index(drop=True)
-        event_names = user_data["Event Name"].dropna().tolist()
-        event_options = list(enumerate(event_names))
+        # === FILTER BY PIC ===
+        pic_list = sorted(df_event["Email Address"].dropna().unique())
+        selected_pic = st.selectbox("Pilih Nama PIC (Sales)", pic_list)
+        user_data = df_event[df_event["Email Address"] == selected_pic]
 
-        if event_options:
-            selected_pair = st.selectbox("Pilih Pengajuan Event", options=event_options, format_func=lambda x: x[1])
-            selected_index = selected_pair[0]
-            selected_row = user_data.iloc[selected_index]
-
-            st.subheader("📌 Ringkasan Pengajuan")
-            col1, col2, col3 = st.columns(3)
-            col1.markdown(f"<div style='font-size:30px; font-weight:bold'>Event<br><span style='font-weight:normal'>{selected_row['Event Name']}</span></div>", unsafe_allow_html=True)
-            col2.markdown(f"<div style='font-size:30px; font-weight:bold'>Lokasi<br><span style='font-weight:normal'>{selected_row['Event Location']}</span></div>", unsafe_allow_html=True)
-            col3.markdown(f"<div style='font-size:30px; font-weight:bold'>Status<br><span style='font-weight:normal'>{selected_row['Status']}</span></div>", unsafe_allow_html=True)
-
-            st.markdown("")
-            col4, col5, col6 = st.columns(3)
-            col4.markdown(f"<div style='font-size:30px; font-weight:bold'>Start Event<br><span style='font-weight:normal'>{str(selected_row['Event Start Date'])}</span></div>", unsafe_allow_html=True)
-            col5.markdown(f"<div style='font-size:30px; font-weight:bold'>End Event<br><span style='font-weight:normal'>{str(selected_row['Event End Date'])}</span></div>", unsafe_allow_html=True)
-            col6.markdown(f"<div style='font-size:30px; font-weight:bold'>Total Device<br><span style='font-weight:normal'>{int(selected_row['Total Device'])}</span></div>", unsafe_allow_html=True)
-
-            username, domain = selected_pic.split("@")
-            email_display = selected_pic.replace("@", "&#8203;@").replace(".", "&#8203;.")
-            st.markdown("---")
-            st.markdown(f"<b>📄 Riwayat Semua Pengajuan oleh</b> <span style='color:black'>{email_display}</span>", unsafe_allow_html=True)
-            st.dataframe(user_data.reset_index(drop=True), use_container_width=True)
-        else:
+        if user_data.empty:
             st.warning("PIC ini belum memiliki nama event yang valid.")
+        else:
+            user_data = user_data.reset_index(drop=True)
+            event_names = user_data["Event Name"].dropna().tolist()
+            event_options = list(enumerate(event_names))
 
+            if event_options:
+                selected_pair = st.selectbox("Pilih Pengajuan Event", options=event_options, format_func=lambda x: x[1])
+                selected_index = selected_pair[0]
+                selected_row = user_data.iloc[selected_index]
+
+                st.subheader("📌 Ringkasan Pengajuan")
+                col1, col2, col3 = st.columns(3)
+                col1.markdown(f"<div style='font-size:30px; font-weight:bold'>Event<br><span style='font-weight:normal'>{selected_row['Event Name']}</span></div>", unsafe_allow_html=True)
+                col2.markdown(f"<div style='font-size:30px; font-weight:bold'>Lokasi<br><span style='font-weight:normal'>{selected_row['Event Location']}</span></div>", unsafe_allow_html=True)
+                col3.markdown(f"<div style='font-size:30px; font-weight:bold'>Status<br><span style='font-weight:normal'>{selected_row['Status']}</span></div>", unsafe_allow_html=True)
+
+                st.markdown("")
+                col4, col5, col6 = st.columns(3)
+                col4.markdown(f"<div style='font-size:30px; font-weight:bold'>Start Event<br><span style='font-weight:normal'>{str(selected_row['Event Start Date'])}</span></div>", unsafe_allow_html=True)
+                col5.markdown(f"<div style='font-size:30px; font-weight:bold'>End Event<br><span style='font-weight:normal'>{str(selected_row['Event End Date'])}</span></div>", unsafe_allow_html=True)
+                col6.markdown(f"<div style='font-size:30px; font-weight:bold'>Total Device<br><span style='font-weight:normal'>{int(selected_row['Total Device'])}</span></div>", unsafe_allow_html=True)
+
+                username, domain = selected_pic.split("@")
+                email_display = selected_pic.replace(".", "&#8203;.").replace("@", "&#8203;@")
+                st.markdown("---")
+                st.markdown(f"<b>📊 Riwayat Semua Pengajuan oleh</b> <span style='color:black'>{email_display}</span>", unsafe_allow_html=True)
+                st.dataframe(user_data.reset_index(drop=True), use_container_width=True)
 
 # === 4. RENDER TAB 2 ===
 def render_tab2_status_stok(df_event, df_stock):
