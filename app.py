@@ -41,18 +41,28 @@ def render_tab1_monitoring_event(df_event):
     st.header("📅 Monitoring Pengajuan Event")
 
     # Mode tampilan: Semua event atau berdasarkan PIC
-    tampilkan_mode = st.radio("Tampilkan Event berdasarkan:", ["Semua Event", "Filter by PIC"], horizontal=True)
+    tampilkan_mode = st.radio("Tampilkan Event berdasarkan:", ["Status Event", "Filter by Event", "Filter by PIC"], horizontal=True)
 
     # Pastikan kolom tanggal dalam format datetime
     df_event["Event End Date"] = pd.to_datetime(df_event["Event End Date"], errors='coerce')
     df_event["Event Start Date"] = pd.to_datetime(df_event["Event Start Date"], errors='coerce')
+    
+    df_event = df_event.replace(r'^\s*$', pd.NA, regex=True)
 
-    if tampilkan_mode == "Semua Event":
+    df_event = df_event[
+        ~(df_event['Email Address'].isna() &
+        df_event['Event Name'].isna() &
+        df_event['Event Location'].isna() &
+        df_event['Event Start Date'].isna())
+    ]
+
+
+    if tampilkan_mode == "Status Event":
         # Filter status event
         status_list = df_event["Status"].dropna().unique().tolist()
-        status_filter = st.selectbox("Filter berdasarkan Status Event", ["Semua"] + status_list)
+        status_filter = st.selectbox("Filter berdasarkan Status Event", ["All"] + status_list)
 
-        if status_filter != "Semua":
+        if status_filter != "All":
             df_event = df_event[df_event["Status"] == status_filter]
 
         df_event = df_event.sort_values("Event Start Date", ascending=False)
@@ -63,17 +73,62 @@ def render_tab1_monitoring_event(df_event):
         for i, (_, row) in enumerate(df_event.iterrows()):
             col = cols[i % 3]
             with col:
+                email = row['Email Address'] if pd.notnull(row['Email Address']) else '-'
+                event = row['Event Name'] if pd.notnull(row['Event Name']) else '-'
+                location = row['Event Location'] if pd.notnull(row['Event Location']) else '-'
+
+                # Pastikan 'Event Start Date' adalah datetime sebelum .strftime()
+                start_date = '-'
+                if pd.notnull(row['Event Start Date']):
+                    if not isinstance(row['Event Start Date'], str):
+                        start_date = row['Event Start Date'].strftime('%Y-%m-%d')
+                    else:
+                        start_date = row['Event Start Date']  # Biarkan string biasa kalau bukan datetime
+
                 st.markdown(
                     f"""
-                    <div style="border:1px solid #ccc; border-radius:10px; padding:15px; margin-bottom:10px; background-color:#f9f9f9;">
-                        <b>📧 PIC:</b> {row['Email Address']}<br>
-                        <b>🎪 Event:</b> {row['Event Name']}<br>
-                        <b>📍 Lokasi:</b> {row['Event Location']}<br>
-                        <b>🗓️ Start Event:</b> {row['Event Start Date'].strftime('%Y-%m-%d') if pd.notnull(row['Event End Date']) else '_'}
+                    <div style="border:1px solid #ccc; border-radius:10px; padding:15px; margin-bottom:10px; background-color:#f9f9f9; height: 150px;">
+                        <b>📧 PIC:</b> {email}<br>
+                        <b>🎯 Event:</b> {event}<br>
+                        <b>📍 Lokasi:</b> {location}<br>
+                        <b>📅 Start Event:</b> {start_date}
                     </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                    """, unsafe_allow_html=True)
+
+    elif tampilkan_mode == "Filter by Event":
+        st.markdown("### 🔍 Filter berdasarkan Event")
+
+        # Daftar unik event
+        list_event = df_event["Event Name"].dropna()
+        list_event = list_event[list_event.str.strip() !=""].unique().tolist()
+        selected_event = st.selectbox("Pilih Event", sorted(list_event))
+
+        # Filter berdasarkan event yang dipilih
+        df_selected = df_event[df_event["Event Name"] == selected_event]
+
+        # Cek jika data ditemukan
+        if not df_selected.empty:
+            row = df_selected.iloc[0]  # Ambil baris pertama (asumsi satu entry per event)
+            
+            st.markdown("### 📌 Ringkasan Pengajuan")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown(f"<div style='font-size:30px; font-weight:bold'>Event Name<br><span style='font-weight:normal'>{row['Event Name']}</span></div>", unsafe_allow_html=True)
+                st.markdown("")
+                st.markdown(f"<div style='font-size:30px; font-weight:bold'>Start Event<br><span style='font-weight:normal'>{row['Event Start Date'].strftime('%Y-%m-%d')}</span></div>", unsafe_allow_html=True)
+
+            with col2:
+                st.markdown(f"<div style='font-size:30px; font-weight:bold'>Location Event<br><span style='font-weight:normal'>{row['Event Location']}</span></div>", unsafe_allow_html=True)
+                st.markdown("")
+                st.markdown(f"<div style='font-size:30px; font-weight:bold'>End Event<br><span style='font-weight:normal'>{row['Event End Date'].strftime('%Y-%m-%d')}</span></div>", unsafe_allow_html=True)
+
+            with col3:
+                st.markdown(f"<div style='font-size:30px; font-weight:bold'>Status<br><span style='font-weight:normal'>{row['Status']}</span></div>", unsafe_allow_html=True)
+                st.markdown("")
+                st.markdown(f"<div style='font-size:30px; font-weight:bold'>Total Device<br><span style='font-weight:normal'>{int(row['Total Device'])}</span></div>", unsafe_allow_html=True)
+
+        else:
+            st.warning("Data tidak ditemukan untuk event tersebut.")
 
     else:
         # === FILTER BY PIC ===
@@ -101,8 +156,8 @@ def render_tab1_monitoring_event(df_event):
 
                 st.markdown("")
                 col4, col5, col6 = st.columns(3)
-                col4.markdown(f"<div style='font-size:30px; font-weight:bold'>Start Event<br><span style='font-weight:normal'>{str(selected_row['Event Start Date'])}</span></div>", unsafe_allow_html=True)
-                col5.markdown(f"<div style='font-size:30px; font-weight:bold'>End Event<br><span style='font-weight:normal'>{str(selected_row['Event End Date'])}</span></div>", unsafe_allow_html=True)
+                col4.markdown(f"<div style='font-size:30px; font-weight:bold'>Start Event<br><span style='font-weight:normal'>{selected_row['Event Start Date'].strftime('%Y-%m-%d')}</span></div>", unsafe_allow_html=True)
+                col5.markdown(f"<div style='font-size:30px; font-weight:bold'>End Event<br><span style='font-weight:normal'>{selected_row['Event End Date'].strftime('%Y-%m-%d')}</span></div>", unsafe_allow_html=True)
                 col6.markdown(f"<div style='font-size:30px; font-weight:bold'>Total Device<br><span style='font-weight:normal'>{int(selected_row['Total Device'])}</span></div>", unsafe_allow_html=True)
 
                 username, domain = selected_pic.split("@")
