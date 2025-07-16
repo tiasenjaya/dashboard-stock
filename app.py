@@ -53,7 +53,8 @@ def render_tab1_monitoring_event(df_event):
         ~(df_event['Email Address'].isna() &
         df_event['Event Name'].isna() &
         df_event['Event Location'].isna() &
-        df_event['Event Start Date'].isna())
+        df_event['Event Start Date'].isna() &
+        df_event['Event End Date'].isna())
     ]
 
 
@@ -66,12 +67,12 @@ def render_tab1_monitoring_event(df_event):
             df_event = df_event[df_event["Status"] == status_filter]
 
         df_event = df_event.sort_values("Event Start Date", ascending=False)
-        st.markdown("### 📋 Daftar Semua Event (Ringkas)")
+        st.markdown("### 📋 Detail Event")
 
-        cols = st.columns(3)
+        cols = st.columns(2)
 
         for i, (_, row) in enumerate(df_event.iterrows()):
-            col = cols[i % 3]
+            col = cols[i % 2]
             with col:
                 email = row['Email Address'] if pd.notnull(row['Email Address']) else '-'
                 event = row['Event Name'] if pd.notnull(row['Event Name']) else '-'
@@ -85,13 +86,21 @@ def render_tab1_monitoring_event(df_event):
                     else:
                         start_date = row['Event Start Date']  # Biarkan string biasa kalau bukan datetime
 
+                end_date = '-'
+                if pd.notnull(row['Event End Date']):
+                    if not isinstance(row['Event End Date'], str):
+                        end_date = row['Event End Date'].strftime('%Y-%m-%d')
+                    else:
+                        end_date = row['Event End Date']
+
                 st.markdown(
                     f"""
-                    <div style="border:1px solid #ccc; border-radius:10px; padding:15px; margin-bottom:10px; background-color:#f9f9f9; height: 150px;">
+                    <div style="border:1px solid #ccc; border-radius:10px; padding:15px; margin-bottom:10px; background-color:#f9f9f9; height: 180px;">
                         <b>📧 PIC:</b> {email}<br>
                         <b>🎯 Event:</b> {event}<br>
                         <b>📍 Lokasi:</b> {location}<br>
-                        <b>📅 Start Event:</b> {start_date}
+                        <b>📅 Start Event:</b> {start_date}<br>
+                        <b>📅 End Event:</b> {end_date}
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -110,22 +119,24 @@ def render_tab1_monitoring_event(df_event):
         if not df_selected.empty:
             row = df_selected.iloc[0]  # Ambil baris pertama (asumsi satu entry per event)
             
-            st.markdown("### 📌 Ringkasan Pengajuan")
+            st.markdown("### 📌 Rincian Event")
             col1, col2, col3 = st.columns(3)
             with col1:
+                st.markdown(f"<div style='font-size:30px; font-weight:bold'>BC<br><span style='font-weight:normal'>{row['Email Address']}</span></div>", unsafe_allow_html=True)
+                st.markdown("")
                 st.markdown(f"<div style='font-size:30px; font-weight:bold'>Event Name<br><span style='font-weight:normal'>{row['Event Name']}</span></div>", unsafe_allow_html=True)
                 st.markdown("")
-                st.markdown(f"<div style='font-size:30px; font-weight:bold'>Start Event<br><span style='font-weight:normal'>{row['Event Start Date'].strftime('%Y-%m-%d')}</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size:30px; font-weight:bold'>Total Device<br><span style='font-weight:normal'>{int(row['Total Device'])}</span></div>", unsafe_allow_html=True)
 
             with col2:
                 st.markdown(f"<div style='font-size:30px; font-weight:bold'>Location Event<br><span style='font-weight:normal'>{row['Event Location']}</span></div>", unsafe_allow_html=True)
                 st.markdown("")
-                st.markdown(f"<div style='font-size:30px; font-weight:bold'>End Event<br><span style='font-weight:normal'>{row['Event End Date'].strftime('%Y-%m-%d')}</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size:30px; font-weight:bold'>Start Event<br><span style='font-weight:normal'>{row['Event Start Date'].strftime('%Y-%m-%d')}</span></div>", unsafe_allow_html=True)
 
             with col3:
                 st.markdown(f"<div style='font-size:30px; font-weight:bold'>Status<br><span style='font-weight:normal'>{row['Status']}</span></div>", unsafe_allow_html=True)
                 st.markdown("")
-                st.markdown(f"<div style='font-size:30px; font-weight:bold'>Total Device<br><span style='font-weight:normal'>{int(row['Total Device'])}</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size:30px; font-weight:bold'>End Event<br><span style='font-weight:normal'>{(row['Event End Date']).strftime('%Y-%m-%d')}</span></div>", unsafe_allow_html=True)
 
         else:
             st.warning("Data tidak ditemukan untuk event tersebut.")
@@ -148,7 +159,7 @@ def render_tab1_monitoring_event(df_event):
                 selected_index = selected_pair[0]
                 selected_row = user_data.iloc[selected_index]
 
-                st.subheader("📌 Ringkasan Pengajuan")
+                st.subheader("📌 Rincian Event")
                 col1, col2, col3 = st.columns(3)
                 col1.markdown(f"<div style='font-size:30px; font-weight:bold'>Event<br><span style='font-weight:normal'>{selected_row['Event Name']}</span></div>", unsafe_allow_html=True)
                 col2.markdown(f"<div style='font-size:30px; font-weight:bold'>Lokasi<br><span style='font-weight:normal'>{selected_row['Event Location']}</span></div>", unsafe_allow_html=True)
