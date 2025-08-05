@@ -83,6 +83,7 @@ def count_ready_device(df_stock, df_event, selected_date, device_type, view_opti
 
 
 def calculate_stock_summary(df_event, df_temp_stock, df_perm_stock, selected_date, view_option):
+    st.write("📌 Kolom tersedia:", df_stock.columns.tolist())
     # Gabung data stok jika All Stock
     if view_option == "All Stock":
         df_stock = pd.concat([df_temp_stock, df_perm_stock], ignore_index=True)
