@@ -26,14 +26,72 @@ def load_data():
 
     return df_event, df_temp_stock, df_perm_stock
 
+def _normalize_cols(df: pd.DataFrame) -> pd.DataFrame:
+    """Bersihkan nama kolom: trim, hapus BOM, kompres spasi."""
+    df = df.copy()
+    df.columns = (
+        df.columns.astype(str)
+        .str.replace("\ufeff", "", regex=False)   # hapus BOM
+        .str.strip()
+        .str.replace(r"\s+", " ", regex=True)     # kompres spasi
+    )
+    return df
+
+def _coerce_expected_headers(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Beberapa ekspor CSV membawa nilai baris pertama ke nama kolom,
+    mis: 'Type Printer Bluetooth ...' → paksa jadi 'Type' berdasarkan prefix.
+    """
+    expected = [
+        "Type",
+        "Brand",
+        "Model",
+        "Specification",
+        "Serial Number",
+        "Status Device",
+        "Location",
+        "Notes Device",
+    ]
+    mapping = {}
+    for c in df.columns:
+        cs = c.strip()
+        # cari header yang cocok sbg prefix
+        match = next((e for e in expected if cs.lower().startswith(e.lower())), None)
+        if match:
+            mapping[c] = match  # rename ke header yang benar
+    return df.rename(columns=mapping)
+
+def _standardize_stock_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Pastikan ada kolom 'type' yang konsisten untuk stok device."""
+    df = _normalize_cols(df)
+    df = _coerce_expected_headers(df)            # <-- perbaiki header bocor
+    # setelah dipaksa, cek lagi kolom Type
+    type_col = next((c for c in df.columns if c.lower() == "type"), None)
+    if type_col is None:
+        # debug yang ramah
+        st.error(f"Kolom 'Type' tidak ditemukan. Kolom tersedia: {list(df.columns)}")
+        # tampilkan 2 baris pertama agar kelihatan struktur datanya
+        st.write("Contoh 2 baris pertama:", df.head(2))
+        raise KeyError("Type")
+    df["type"] = df[type_col].astype(str).str.strip().str.lower()
+    return df
+
+
 def preprocess_data(df_event, df_temp_stock, df_perm_stock):
-    df_event.columns = df_event.columns.str.strip()
-    df_event = df_event.loc[:, ~df_event.columns.str.contains("^Unnamed")]
-    df_event["Status"] = df_event["Status"].fillna("Waiting")
+    # event
+    df_event = _normalize_cols(df_event)
+    df_event = df_event.loc[:, ~df_event.columns.str.contains(r"^Unnamed", regex=True)]
+    df_event["Status"] = df_event.get("Status", "Waiting").fillna("Waiting")
     df_event["Total Device"] = df_event[
         ["Numbers of Tablet", "Numbers of Printer", "Numbers of Mobile POS (MPOS)"]
     ].fillna(0).sum(axis=1)
+
+    # stock (temporary & permanent)
+    df_temp_stock = _standardize_stock_df(df_temp_stock)
+    df_perm_stock = _standardize_stock_df(df_perm_stock)
+
     return df_event, df_temp_stock, df_perm_stock
+
 
 def count_stock(df_stock, tipe):
     df = df_stock[df_stock["Type"].str.lower().str.strip() == tipe]
@@ -49,7 +107,7 @@ def device_name(dev):
     return mapping.get(dev, dev)
 
 def count_ready_device(df_stock, df_event, selected_date, device_type, view_option):
-    stok = df_stock[df_stock["Type"].str.lower() == device_type.lower()]
+    stok = df_stock[df_stock["type"] == device_type.lower()]
     jumlah_stok = stok.shape[0]
 
     selected_date = pd.to_datetime(selected_date).date()
@@ -83,7 +141,7 @@ def count_ready_device(df_stock, df_event, selected_date, device_type, view_opti
 
 
 def calculate_stock_summary(df_event, df_temp_stock, df_perm_stock, selected_date, view_option):
-    st.write("📌 Kolom tersedia:", df_stock.columns.tolist())
+
     # Gabung data stok jika All Stock
     if view_option == "All Stock":
         df_stock = pd.concat([df_temp_stock, df_perm_stock], ignore_index=True)
@@ -91,6 +149,8 @@ def calculate_stock_summary(df_event, df_temp_stock, df_perm_stock, selected_dat
         df_stock = df_temp_stock.copy()
     else:  # Permanent Stock
         df_stock = df_perm_stock.copy()
+
+    #st.write("📌 Kolom tersedia:", df_stock.columns.tolist())
 
     # Perhitungan ready per jenis device
     ready_tablet = count_ready_device(df_stock, df_event, selected_date, "tablet", view_option)
@@ -126,25 +186,26 @@ def calculate_stock_summary(df_event, df_temp_stock, df_perm_stock, selected_dat
     
     # Tambahan data jika masih membutuhkan struktur total_temp dan used_temp per device
     stock_summary["tablet"].update({
-        "total_temp": df_temp_stock[df_temp_stock["Type"].str.lower() == "tablet"].shape[0],
+        "total_temp": df_temp_stock[df_temp_stock["type"] == "tablet"].shape[0],
         "used_temp": df_temp["Numbers of Tablet"].sum(),
-        "total_perm": df_perm_stock[df_perm_stock["Type"].str.lower() == "tablet"].shape[0],
-        "used_perm": df_perm["Numbers of Tablet"].sum()
+        "total_perm": df_perm_stock[df_perm_stock["type"] == "tablet"].shape[0],
+        "used_perm": df_perm["Numbers of Tablet"].sum(),
     })
 
     stock_summary["printer bluetooth"].update({
-        "total_temp": df_temp_stock[df_temp_stock["Type"].str.lower() == "printer bluetooth"].shape[0],
+        "total_temp": df_temp_stock[df_temp_stock["type"] == "printer bluetooth"].shape[0],
         "used_temp": df_temp["Numbers of Printer"].sum(),
-        "total_perm": df_perm_stock[df_perm_stock["Type"].str.lower() == "printer bluetooth"].shape[0],
-        "used_perm": df_perm["Numbers of Printer"].sum()
+        "total_perm": df_perm_stock[df_perm_stock["type"] == "printer bluetooth"].shape[0],
+        "used_perm": df_perm["Numbers of Printer"].sum(),
     })
 
     stock_summary["mobile pos"].update({
-        "total_temp": df_temp_stock[df_temp_stock["Type"].str.lower() == "mobile pos"].shape[0],
+        "total_temp": df_temp_stock[df_temp_stock["type"] == "mobile pos"].shape[0],
         "used_temp": df_temp["Numbers of Mobile POS (MPOS)"].sum(),
-        "total_perm": df_perm_stock[df_perm_stock["Type"].str.lower() == "mobile pos"].shape[0],
-        "used_perm": df_perm["Numbers of Mobile POS (MPOS)"].sum()
+        "total_perm": df_perm_stock[df_perm_stock["type"] == "mobile pos"].shape[0],
+        "used_perm": df_perm["Numbers of Mobile POS (MPOS)"].sum(),
     })
+
 
     return stock_summary, df_event_active, df_temp, df_perm
 
@@ -241,10 +302,10 @@ def render_tab2_status_stok(df_event, df_temp_stock, df_perm_stock):
 
     # Tambahkan setelah pemilihan filter & tanggal
     #st.write("📊 Distribusi Tipe di Device Temporary:")
-    #st.write(df_temp_stock["Type"].value_counts())
+    #st.write(df_temp_stock["type"].value_counts())
 
     #st.write("📊 Distribusi Tipe di Device Permanent:")
-    #st.write(df_perm_stock["Type"].value_counts())
+    #st.write(df_perm_stock["type"].value_counts())
 
     stock_summary, df_event_active, df_temp_event, df_perm_event = calculate_stock_summary(
         df_event, df_temp_stock, df_perm_stock, selected_date, view_option
