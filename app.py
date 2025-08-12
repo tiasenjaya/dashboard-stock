@@ -106,39 +106,56 @@ def device_name(dev):
     }
     return mapping.get(dev, dev)
 
+# Tambahkan di atas (global helpers)
+CONSUME_STATUSES = {"in use", "on prepare", "pending"}          # memotong stok
+NEUTRAL_STATUSES = {"returned", "cancel", "waiting"} # tidak memotong stok (informasi saja)
+STATUS_ORDER = ["in use", "on prepare", "pending"]
+
 def count_ready_device(df_stock, df_event, selected_date, device_type, view_option):
+    # 1) Total stok dari sheet stok (temp/permanen/atau gabungan)
     stok = df_stock[df_stock["type"] == device_type.lower()]
     jumlah_stok = stok.shape[0]
 
+    # 2) Normalisasi & pilih event yang benar-benar mengurangi stok
     selected_date = pd.to_datetime(selected_date).date()
     df_event = df_event.copy()
     df_event["Event Start Date"] = pd.to_datetime(df_event["Event Start Date"], errors="coerce")
-    df_event["Event End Date"] = pd.to_datetime(df_event["Event End Date"], errors="coerce")
-    df_event["Status"] = df_event["Status"].astype(str).str.strip().str.lower()
+    df_event["Event End Date"]   = pd.to_datetime(df_event["Event End Date"],   errors="coerce")
+    df_event["Status"]       = df_event["Status"].astype(str).str.strip().str.lower()
     df_event["Event Status"] = df_event["Event Status"].astype(str).str.strip().str.lower()
 
-    aktif = (
+    # Hanya status yang memotong stok
+    status = df_event["Status"]
+    consumes = df_event["Status"].isin(CONSUME_STATUSES)
+
+    # Aktif di tanggal terpilih (overlap)
+    within_date = (
         df_event["Event Start Date"].notna() &
         df_event["Event End Date"].notna() &
         (df_event["Event Start Date"].dt.date <= selected_date) &
-        (df_event["Event End Date"].dt.date >= selected_date) &
-        (df_event["Status"].isin(["in use", "on prepare"]))
+        (df_event["Event End Date"].dt.date >= selected_date)
     )
 
+    is_pending = (status == "pending")
+    aktif = consumes & (within_date | is_pending)
+
+    # Batasi sesuai view_option (Temporary / Permanent) bila dipilih
     if view_option.lower() in ["temporary stock", "permanent stock"]:
-        aktif &= df_event["Event Status"].str.lower() == view_option.lower().replace(" stock", "")
+        aktif &= df_event["Event Status"] == view_option.lower().replace(" stock", "")
 
     df_aktif = df_event[aktif]
 
     kolom_event = {
         "tablet": "Numbers of Tablet",
         "printer bluetooth": "Numbers of Printer",
-        "mobile pos": "Numbers of Mobile POS (MPOS)"
+        "mobile pos": "Numbers of Mobile POS (MPOS)",
     }[device_type.lower()]
 
     jumlah_dipakai = df_aktif[kolom_event].sum()
-    return jumlah_stok - jumlah_dipakai
 
+    # 3) Ready = stok - dipakai (opsional: cegah negatif agar lebih ramah UI)
+    ready = jumlah_stok - jumlah_dipakai
+    return max(0, int(ready))
 
 def calculate_stock_summary(df_event, df_temp_stock, df_perm_stock, selected_date, view_option):
 
@@ -172,17 +189,46 @@ def calculate_stock_summary(df_event, df_temp_stock, df_perm_stock, selected_dat
     df_event["Status"] = df_event["Status"].astype(str).str.strip().str.lower()
     df_event["Event Status"] = df_event["Event Status"].astype(str).str.strip().str.lower()
 
-    is_active = (
+    status = df_event["Status"]
+    overlap = (
         df_event["Event Start Date"].notna() &
         df_event["Event End Date"].notna() &
         (df_event["Event Start Date"].dt.date <= selected_date) &
-        (df_event["Event End Date"].dt.date >= selected_date) &
-        (df_event["Status"].isin(["in use", "on prepare"]))
+        (df_event["Event End Date"].dt.date >= selected_date)
     )
+
+    is_pending = (status == "pending")
+
+    is_active = status.isin(CONSUME_STATUSES) & (overlap | is_pending)
 
     df_event_active = df_event[is_active].copy()
     df_temp = df_event_active[df_event_active["Event Status"] == "temporary"]
     df_perm = df_event_active[df_event_active["Event Status"] == "permanent"]
+
+    # Tentukan scope event sesuai tab yang dipilih
+    if view_option == "Temporary Stock":
+        scope_df = df_temp
+    elif view_option == "Permanent Stock":
+        scope_df = df_perm
+    else:  # All Stock
+        scope_df = df_event_active
+
+    # Hanya status yang memang mengurangi stok
+    df_consume = scope_df[scope_df["Status"].isin(CONSUME_STATUSES)]
+
+    def _breakdown_for(colname: str) -> dict:
+        # Kelompokkan per status, isi 0 untuk status yang tak muncul agar rapi
+        return (
+            df_consume.groupby("Status")[colname].sum()
+            .reindex(STATUS_ORDER, fill_value=0)
+            .to_dict()
+        )
+
+    # Simpan breakdown ke stock_summary per device
+    stock_summary["tablet"]["used_breakdown"] = _breakdown_for("Numbers of Tablet")
+    stock_summary["printer bluetooth"]["used_breakdown"] = _breakdown_for("Numbers of Printer")
+    stock_summary["mobile pos"]["used_breakdown"] = _breakdown_for("Numbers of Mobile POS (MPOS)")
+
     
     # Tambahan data jika masih membutuhkan struktur total_temp dan used_temp per device
     stock_summary["tablet"].update({
@@ -321,6 +367,20 @@ def render_tab2_status_stok(df_event, df_temp_stock, df_perm_stock):
 
     st.markdown("---")
     st.subheader("📋 Detail Penggunaan Device (Event Aktif)")
+    with st.expander("Breakdown pemakaian (In Use vs On Prepare vs Pending)"):
+        tb = stock_summary["tablet"]["used_breakdown"]
+        pb = stock_summary["printer bluetooth"]["used_breakdown"]
+        mp = stock_summary["mobile pos"]["used_breakdown"]
+
+        fmt = lambda d, k: int((d.get(k, 0) or 0))
+
+        st.markdown(
+            f"""
+            **Tablet** — In Use: **{fmt(tb, 'in use')}**, On Prepare: **{fmt(tb, 'on prepare')}**, Pending: **{fmt(tb, 'pending')}**  
+            **Printer Bluetooth** — In Use: **{fmt(pb, 'in use')}**, On Prepare: **{fmt(pb, 'on prepare')}**, Pending: **{fmt(pb, 'pending')}**  
+            **Mobile POS** — In Use: **{fmt(mp, 'in use')}**, On Prepare: **{fmt(mp, 'on prepare')}**, Pending: **{fmt(mp, 'pending')}**
+            """
+        )
 
     # Filter tampilan tabel agar sesuai jenis stok yang dipilih
     if view_option == "Temporary Stock":
