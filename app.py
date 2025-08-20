@@ -360,7 +360,7 @@ def render_tab2_status_stok(df_event, df_temp_stock, df_perm_stock):
     st.subheader("📈 Ringkasan Stok Ready")
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Device", int(stock_summary["total_device"]))
+    col1.metric("Total Device Ready", int(stock_summary["total_device"]))
     col2.metric("Tablet Ready", int(stock_summary["tablet"]["ready"]))
     col3.metric("Printer Bluetooth Ready", int(stock_summary["printer bluetooth"]["ready"]))
     col4.metric("Mobile Pos Ready", int(stock_summary["mobile pos"]["ready"]))
